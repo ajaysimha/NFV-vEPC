@@ -1,0 +1,84 @@
+heat_template_version: 2016-04-08
+
+description: >
+  Openstack Heat base service. Shared for all Heat services.
+
+parameters:
+  Debug:
+    default: ''
+    description: Set to True to enable debugging on all services.
+    type: string
+  RabbitPassword:
+    description: The password for RabbitMQ
+    type: string
+    hidden: true
+  RabbitUserName:
+    default: guest
+    description: The username for RabbitMQ
+    type: string
+  RabbitClientUseSSL:
+    default: false
+    description: >
+        Rabbit client subscriber parameter to specify
+        an SSL connection to the RabbitMQ host.
+    type: string
+  RabbitClientPort:
+    default: 5672
+    description: Set rabbit subscriber port, change this if using SSL
+    type: number
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  HeatPassword:
+    description: The password for the Heat service and db account, used by the Heat services.
+    type: string
+    hidden: true
+  DefaultPasswords:
+    default: {}
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+
+outputs:
+  role_data:
+    description: Shared role data for the Heat services.
+    value:
+      service_name: heat_base
+      config_settings:
+        heat::rabbit_userid: {get_param: RabbitUserName}
+        heat::rabbit_password: {get_param: RabbitPassword}
+        heat::rabbit_use_ssl: {get_param: RabbitClientUseSSL}
+        heat::rabbit_port: {get_param: RabbitClientPort}
+        heat::debug: {get_param: Debug}
+        heat::enable_proxy_headers_parsing: true
+        # We need this because the default heat policy.json no longer works on TripleO
+        # https://git.openstack.org/cgit/openstack/heat/commit/?id=ac86702172ddf01f5bdc3f3cd99d2e32ad9b7024
+        heat::policy::policies:
+          context_is_admin:
+            key: 'context_is_admin'
+            value: 'role:admin'
+        heat::rabbit_heartbeat_timeout_threshold: 60
+        heat::keystone::authtoken::project_name: 'service'
+        heat::keystone::authtoken::auth_uri: {get_param: [EndpointMap, KeystoneInternal, uri] }
+        heat::keystone::authtoken::auth_url: {get_param: [EndpointMap, KeystoneAdmin, uri_no_suffix] }
+        heat::keystone::authtoken::password: {get_param: HeatPassword}
+        heat::keystone::domain::domain_name: 'heat_stack'
+        heat::keystone::domain::domain_admin: 'heat_stack_domain_admin'
+        heat::keystone::domain::domain_admin_email: 'heat_stack_domain_admin@localhost'
+        heat::cron::purge_deleted::age: 30
+        heat::cron::purge_deleted::age_type: 'days'
+        heat::cron::purge_deleted::maxdelay: 3600
+        heat::cron::purge_deleted::destination: '/dev/null'
+        heat::db::database_db_max_retries: -1
+        heat::db::database_max_retries: -1
+      service_config_settings:
+        keystone:
+          tripleo::profile::base::keystone::heat_admin_domain: 'heat_stack'
+          tripleo::profile::base::keystone::heat_admin_user: 'heat_stack_domain_admin'
+          tripleo::profile::base::keystone::heat_admin_email: 'heat_stack_domain_admin@localhost'

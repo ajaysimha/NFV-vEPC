@@ -1,0 +1,68 @@
+heat_template_version: 2016-04-08
+
+description: >
+  MongoDb service deployment using puppet
+
+parameters:
+  #Parameters not used EndpointMap
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  MongoDbLoggingSource:
+    type: json
+    description: Fluentd logging configuration for mongodb.
+    default:
+      tag: database.mongodb
+      path: /var/log/mongodb/mongodb.log
+      format: >-
+        /(?<time>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d+\+\d{4})
+        (?<message>.*)$/
+
+resources:
+  MongoDbBase:
+    type: ./mongodb-base.yaml
+    properties:
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+
+outputs:
+  role_data:
+    description: Service mongodb using composable services.
+    value:
+      service_name: mongodb
+      logging_groups:
+        - mongodb
+      logging_source: {get_param: MongoDbLoggingSource}
+      config_settings:
+        map_merge:
+          - get_attr: [MongoDbBase, role_data, config_settings]
+          - tripleo::profile::base::database::mongodb::mongodb_replset: {get_attr: [MongoDbBase, aux_parameters, rplset_name]}
+            mongodb::server::service_manage: True
+            tripleo.mongodb.firewall_rules:
+              '101 mongodb_config':
+                dport: 27019
+              '102 mongodb_sharding':
+                dport: 27018
+              '103 mongod':
+                dport: 27017
+            # NOTE: bind IP is found in Heat replacing the network name with the
+            # local node IP for the given network; replacement examples
+            # (eg. for internal_api):
+            # internal_api -> IP
+            # internal_api_uri -> [IP]
+            # internal_api_subnet - > IP/CIDR
+            mongodb::server::bind_ip: {get_param: [ServiceNetMap, MongodbNetwork]}
+      step_config: |
+        include ::tripleo::profile::base::database::mongodb

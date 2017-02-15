@@ -1,0 +1,83 @@
+heat_template_version: 2016-10-14
+
+description: >
+  Horizon service configured with Puppet
+
+parameters:
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  Debug:
+    default: ''
+    description: Set to True to enable debugging on all services.
+    type: string
+  DefaultPasswords:
+    default: {}
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  HorizonAllowedHosts:
+    default: '*'
+    description: A list of IP/Hostname allowed to connect to horizon
+    type: comma_delimited_list
+  HorizonSecret:
+    description: Secret key for Django
+    type: string
+    hidden: true
+    default: ''
+  NeutronMechanismDrivers:
+    default: 'openvswitch'
+    description: |
+        The mechanism drivers for the Neutron tenant network.
+    type: comma_delimited_list
+  MemcachedIPv6:
+    default: false
+    description: Enable IPv6 features in Memcached.
+    type: boolean
+  MonitoringSubscriptionHorizon:
+    default: 'overcloud-horizon'
+    type: string
+
+outputs:
+  role_data:
+    description: Role data for the Horizon role.
+    value:
+      service_name: horizon
+      monitoring_subscription: {get_param: MonitoringSubscriptionHorizon}
+      config_settings:
+        horizon::allowed_hosts: {get_param: HorizonAllowedHosts}
+        neutron::plugins::ml2::mechanism_drivers:
+          str_replace:
+            template: MECHANISMS
+            params:
+              MECHANISMS: {get_param: NeutronMechanismDrivers}
+        tripleo.horizon.firewall_rules:
+          '126 horizon':
+            dport:
+              - 80
+              - 443
+        horizon::cache_backend: django.core.cache.backends.memcached.MemcachedCache
+        horizon::django_session_engine: 'django.contrib.sessions.backends.cache'
+        horizon::vhost_extra_params:
+          add_listen: false
+          priority: 10
+          access_log_format: '%a %l %u %t \"%r\" %>s %b \"%%{}{Referer}i\" \"%%{}{User-Agent}i\"'
+        horizon::bind_address: {get_param: [ServiceNetMap, HorizonNetwork]}
+        horizon::django_debug: {get_param: Debug}
+        horizon::keystone_url: {get_param: [EndpointMap, KeystoneInternal, uri]}
+        horizon::secret_key:
+          yaql:
+            expression: $.data.passwords.where($ != '').first()
+            data:
+              passwords:
+                - {get_param: HorizonSecret}
+                - {get_param: [DefaultPasswords, horizon_secret]}
+        memcached_ipv6: {get_param: MemcachedIPv6}
+      step_config: |
+        include ::tripleo::profile::base::horizon

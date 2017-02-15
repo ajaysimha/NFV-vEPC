@@ -1,0 +1,56 @@
+heat_template_version: 2016-04-08
+
+description: >
+  OpenStack Nova Conductor service configured with Puppet
+
+parameters:
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  NovaWorkers:
+    default: 0
+    description: Number of workers for Nova Conductor service.
+    type: number
+  MonitoringSubscriptionNovaConductor:
+    default: 'overcloud-nova-conductor'
+    type: string
+  NovaSchedulerLoggingSource:
+    type: json
+    default:
+      tag: openstack.nova.scheduler
+      path: /var/log/nova/nova-scheduler.log
+
+resources:
+  NovaBase:
+    type: ./nova-base.yaml
+    properties:
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+
+outputs:
+  role_data:
+    description: Role data for the Nova Conductor service.
+    value:
+      service_name: nova_conductor
+      monitoring_subscription: {get_param: MonitoringSubscriptionNovaConductor}
+      logging_source: {get_param: NovaSchedulerLoggingSource}
+      logging_groups:
+        - nova
+      config_settings:
+        map_merge:
+          - get_attr: [NovaBase, role_data, config_settings]
+          - nova::conductor::workers: {get_param: NovaWorkers}
+      step_config: |
+        include tripleo::profile::base::nova::conductor

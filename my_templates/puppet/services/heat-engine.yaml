@@ -1,0 +1,108 @@
+heat_template_version: 2016-10-14
+
+description: >
+  Openstack Heat Engine service configured with Puppet
+
+parameters:
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  HeatEnableDBPurge:
+    type: boolean
+    default: true
+    description: |
+        Whether to create cron job for purging soft deleted rows in the Heat database.
+  HeatWorkers:
+    default: 0
+    description: Number of workers for Heat service.
+    type: number
+  HeatPassword:
+    description: The password for the Heat service and db account, used by the Heat services.
+    type: string
+    hidden: true
+  HeatStackDomainAdminPassword:
+    description: Password for heat_stack_domain_admin user.
+    type: string
+    hidden: true
+  HeatAuthEncryptionKey:
+    description: Auth encryption key for heat-engine
+    type: string
+    hidden: true
+    default: ''
+  MonitoringSubscriptionHeatEngine:
+    default: 'overcloud-heat-engine'
+    type: string
+  HeatEngineLoggingSource:
+    type: json
+    default:
+      tag: openstack.heat.engine
+      path: /var/log/heat/heat-engine.log
+
+resources:
+  HeatBase:
+    type: ./heat-base.yaml
+    properties:
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+
+outputs:
+  role_data:
+    description: Role data for the Heat Engine role.
+    value:
+      service_name: heat_engine
+      monitoring_subscription: {get_param: MonitoringSubscriptionHeatEngine}
+      logging_source: {get_param: HeatEngineLoggingSource}
+      logging_groups:
+        - heat
+      config_settings:
+        map_merge:
+          - get_attr: [HeatBase, role_data, config_settings]
+          - heat::engine::num_engine_workers: {get_param: HeatWorkers}
+            heat::engine::configure_delegated_roles: false
+            heat::engine::trusts_delegated_roles: []
+            tripleo::profile::base::heat::manage_db_purge: {get_param: HeatEnableDBPurge}
+            heat::database_connection:
+              list_join:
+                - ''
+                - - {get_param: [EndpointMap, MysqlInternal, protocol]}
+                  - '://heat:'
+                  - {get_param: HeatPassword}
+                  - '@'
+                  - {get_param: [EndpointMap, MysqlInternal, host]}
+                  - '/heat'
+            heat::keystone_ec2_uri: {get_param: [EndpointMap, KeystoneEC2, uri]}
+            heat::keystone::domain::domain_password: {get_param: HeatStackDomainAdminPassword}
+            heat::engine::auth_encryption_key:
+              yaql:
+                expression: $.data.passwords.where($ != '').first()
+                data:
+                  passwords:
+                    - {get_param: HeatAuthEncryptionKey}
+                    - {get_param: [DefaultPasswords, heat_auth_encryption_key]}
+      step_config: |
+        include ::tripleo::profile::base::heat::engine
+
+      service_config_settings:
+        mysql:
+          heat::db::mysql::password: {get_param: HeatPassword}
+          heat::db::mysql::user: heat
+          heat::db::mysql::host: {get_param: [EndpointMap, MysqlInternal, host_nobrackets]}
+          heat::db::mysql::dbname: heat
+          heat::db::mysql::allowed_hosts:
+            - '%'
+            - "%{hiera('mysql_bind_host')}"
+        keystone:
+            # This is needed because the keystone profile handles creating the domain
+            tripleo::profile::base::keystone::heat_admin_password: {get_param: HeatStackDomainAdminPassword}

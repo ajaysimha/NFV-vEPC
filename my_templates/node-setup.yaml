@@ -1,0 +1,24 @@
+heat_template_version: 2014-10-16
+
+description: >
+  Example file to install a HTTP server on each node
+
+parameters:
+  servers:
+    type: json
+
+resources:
+
+  ExtraConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config: {get_file: /home/stack/my_templates/node-setup.sh}
+
+
+  ExtraDeployments:
+    type: OS::Heat::SoftwareDeployments
+    properties:
+      servers:  {get_param: servers}
+      config: {get_resource: ExtraConfig}
+      actions: ['CREATE', 'UPDATE']

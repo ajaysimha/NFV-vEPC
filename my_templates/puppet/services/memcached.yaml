@@ -1,0 +1,42 @@
+heat_template_version: 2016-04-08
+
+description: >
+  Memcached service configured with Puppet
+
+parameters:
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  MonitoringSubscriptionMemcached:
+    default: 'overcloud-memcached'
+    type: string
+
+outputs:
+  role_data:
+    description: Role data for the Memcached role.
+    value:
+      service_name: memcached
+      monitoring_subscription: {get_param: MonitoringSubscriptionMemcached}
+      config_settings:
+        # NOTE: bind IP is found in Heat replacing the network name with the local node IP
+        # for the given network; replacement examples (eg. for internal_api):
+        # internal_api -> IP
+        # internal_api_uri -> [IP]
+        # internal_api_subnet - > IP/CIDR
+        memcached::listen_ip: {get_param: [ServiceNetMap, MemcachedNetwork]}
+        tripleo.memcached.firewall_rules:
+          '121 memcached':
+            dport: 11211
+      step_config: |
+        include ::tripleo::profile::base::memcached

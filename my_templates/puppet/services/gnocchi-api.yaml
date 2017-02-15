@@ -1,0 +1,123 @@
+heat_template_version: 2016-04-08
+
+description: >
+  Gnocchi service configured with Puppet
+
+parameters:
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  GnocchiPassword:
+    description: The password for the gnocchi service and db account.
+    type: string
+    hidden: true
+  GnocchiBackend:
+    default: swift
+    description: The short name of the Gnocchi backend to use. Should be one
+      of swift, rbd, or file
+    type: string
+    constraints:
+    - allowed_values: ['swift', 'file', 'rbd']
+  KeystoneRegion:
+    type: string
+    default: 'regionOne'
+    description: Keystone region for endpoint
+  MonitoringSubscriptionGnocchiApi:
+    default: 'overcloud-gnocchi-api'
+    type: string
+  GnocchiApiLoggingSource:
+    type: json
+    default:
+      tag: openstack.gnocchi.api
+      path: /var/log/gnocchi/app.log
+
+resources:
+
+  GnocchiServiceBase:
+    type: ./gnocchi-base.yaml
+    properties:
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+
+  ApacheServiceBase:
+    type: ./apache.yaml
+    properties:
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+
+outputs:
+  role_data:
+    description: Role data for the Gnocchi role.
+    value:
+      service_name: gnocchi_api
+      monitoring_subscription: {get_param: MonitoringSubscriptionGnocchiApi}
+      logging_source: {get_param: GnocchiApiLoggingSource}
+      logging_groups:
+        - gnocchi
+      config_settings:
+        map_merge:
+          - get_attr: [ApacheServiceBase, role_data, config_settings]
+          - get_attr: [GnocchiServiceBase, role_data, config_settings]
+          - tripleo.gnocchi_api.firewall_rules:
+              '129 gnocchi-api':
+                dport:
+                  - 8041
+                  - 13041
+            gnocchi::api::enabled: true
+            gnocchi::api::enable_proxy_headers_parsing: true
+            gnocchi::api::service_name: 'httpd'
+            gnocchi::keystone::authtoken::auth_uri: {get_param: [EndpointMap, KeystoneInternal, uri]}
+            gnocchi::keystone::authtoken::auth_url: {get_param: [EndpointMap, KeystoneAdmin, uri_no_suffix]}
+            gnocchi::keystone::authtoken::password: {get_param: GnocchiPassword}
+            gnocchi::keystone::authtoken::project_name: 'service'
+            gnocchi::wsgi::apache::ssl: false
+            gnocchi::wsgi::apache::servername:
+              str_replace:
+                template:
+                  '"%{::fqdn_$NETWORK}"'
+                params:
+                  $NETWORK: {get_param: [ServiceNetMap, GnocchiApiNetwork]}
+            tripleo::profile::base::gnocchi::api::gnocchi_backend: {get_param: GnocchiBackend}
+            # NOTE: bind IP is found in Heat replacing the network name with the
+            # local node IP for the given network; replacement examples
+            # (eg. for internal_api):
+            # internal_api -> IP
+            # internal_api_uri -> [IP]
+            # internal_api_subnet - > IP/CIDR
+            gnocchi::wsgi::apache::bind_host: {get_param: [ServiceNetMap, GnocchiApiNetwork]}
+            gnocchi::api::host: {get_param: [ServiceNetMap, GnocchiApiNetwork]}
+
+            gnocchi::api::keystone_auth_uri: {get_param: [EndpointMap, KeystoneInternal, uri]}
+            gnocchi::api::keystone_identity_uri: {get_param: [EndpointMap, KeystoneAdmin, uri_no_suffix]}
+            gnocchi::storage::swift::swift_authurl: {get_param: [EndpointMap, KeystoneInternal, uri]}
+      step_config: |
+        include ::tripleo::profile::base::gnocchi::api
+      service_config_settings:
+        keystone:
+          gnocchi::keystone::auth::admin_url: { get_param: [ EndpointMap, GnocchiAdmin, uri ] }
+          gnocchi::keystone::auth::internal_url: {get_param: [EndpointMap, GnocchiInternal, uri]}
+          gnocchi::keystone::auth::password: {get_param: GnocchiPassword}
+          gnocchi::keystone::auth::public_url: { get_param: [ EndpointMap, GnocchiPublic, uri ] }
+          gnocchi::keystone::auth::region: {get_param: KeystoneRegion}
+          gnocchi::keystone::auth::tenant: 'service'
+        mysql:
+          gnocchi::db::mysql::password: {get_param: GnocchiPassword}
+          gnocchi::db::mysql::user: gnocchi
+          gnocchi::db::mysql::host: {get_param: [EndpointMap, MysqlInternal, host_nobrackets]}
+          gnocchi::db::mysql::dbname: gnocchi
+          gnocchi::db::mysql::allowed_hosts:
+            - '%'
+            - "%{hiera('mysql_bind_host')}"

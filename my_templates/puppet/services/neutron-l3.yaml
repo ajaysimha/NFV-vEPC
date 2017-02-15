@@ -1,0 +1,74 @@
+heat_template_version: 2016-04-08
+
+description: >
+  OpenStack Neutron L3 agent configured with Puppet
+
+parameters:
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  Debug:
+    type: string
+    default: ''
+  NeutronExternalNetworkBridge:
+    description: Name of bridge used for external network traffic.
+    type: string
+    default: 'br-ex'
+  NeutronL3AgentMode:
+    description: |
+      Agent mode for L3 agent. Must be one of legacy or dvr_snat.
+    default: 'legacy'
+    type: string
+    constraints:
+      - allowed_values:
+        - legacy
+        - dvr_snat
+  MonitoringSubscriptionNeutronL3:
+    default: 'overcloud-neutron-l3-agent'
+    type: string
+  NeutronL3AgentLoggingSource:
+    type: json
+    default:
+      tag: openstack.neutron.agent.l3
+      path: /var/log/neutron/l3-agent.log
+
+resources:
+
+  NeutronBase:
+    type: ./neutron-base.yaml
+    properties:
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+
+outputs:
+  role_data:
+    description: Role data for the Neutron L3 agent service.
+    value:
+      service_name: neutron_l3
+      monitoring_subscription: {get_param: MonitoringSubscriptionNeutronL3}
+      logging_source: {get_param: NeutronL3AgentLoggingSource}
+      logging_groups:
+        - neutron
+      config_settings:
+        map_merge:
+          - get_attr: [NeutronBase, role_data, config_settings]
+          - neutron::agents::l3::external_network_bridge: {get_param: NeutronExternalNetworkBridge}
+            neutron::agents::l3::router_delete_namespaces: True
+            neutron::agents::l3::agent_mode : {get_param: NeutronL3AgentMode}
+            tripleo.neutron_l3.firewall_rules:
+              '106 neutron_l3 vrrp':
+                proto: vrrp
+      step_config: |
+        include tripleo::profile::base::neutron::l3

@@ -1,0 +1,51 @@
+heat_template_version: 2016-04-08
+
+description: >
+  OpenStack Ceilometer Notification Agent service configured with Puppet
+
+parameters:
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  MonitoringSubscriptionCeilometerNotification:
+    default: 'overcloud-ceilometer-agent-notification'
+    type: string
+  CeilometerAgentNotificationLoggingSource:
+    type: json
+    default:
+      tag: openstack.ceilometer.agent.notification
+      path: /var/log/ceilometer/agent-notification.log
+
+
+resources:
+  CeilometerServiceBase:
+    type: ./ceilometer-base.yaml
+    properties:
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+
+outputs:
+  role_data:
+    description: Role data for the Ceilometer Notification Agent role.
+    value:
+      service_name: ceilometer_agent_notification
+      monitoring_subscription: {get_param: MonitoringSubscriptionCeilometerNotification}
+      logging_source: {get_param: CeilometerAgentNotificationLoggingSource}
+      logging_groups:
+        - ceilometer
+      config_settings:
+        get_attr: [CeilometerServiceBase, role_data, config_settings]
+      step_config: |
+        include ::tripleo::profile::base::ceilometer::agent::notification

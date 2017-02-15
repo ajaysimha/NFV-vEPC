@@ -1,0 +1,112 @@
+#This file is an example of an environment file for defining the isolated
+#networks and related parameters.
+resource_registry:
+  # Network Interface templates to use (these files must exist)
+  OS::TripleO::BlockStorage::Net::SoftwareConfig: ../nic-configs/cinder-storage.yaml
+  OS::TripleO::Compute::Net::SoftwareConfig: ../nic-configs/compute.yaml
+  OS::TripleO::Controller::Net::SoftwareConfig: ../nic-configs/controller.yaml
+  OS::TripleO::ObjectStorage::Net::SoftwareConfig: ../nic-configs/swift-storage.yaml
+  OS::TripleO::CephStorage::Net::SoftwareConfig: ../nic-configs/ceph-storage.yaml
+  
+  # first boot script for compute (set kernel args) and ceph nodes (wipe disks)
+  OS::TripleO::NodeUserData: /home/stack/my_templates/firstboot/first-boot.yaml
+
+  # Neutron SR-IOV agent
+  OS::TripleO::Services::NeutronSriovAgent: ../puppet/services/neutron-sriov-agent.yaml
+
+  # Override dynamic IP allocation for external VIP
+  #OS::TripleO::Network::Ports::NetVipMap: /usr/share/openstack-tripleo-heat-templates/network/ports/net_vip_map_external.yaml
+  #OS::TripleO::Network::Ports::ExternalVipPort: /usr/share/openstack-tripleo-heat-templates/network/ports/noop.yaml
+
+parameter_defaults:
+  # This section is where deployment-specific configuration is done
+
+  # This sets 'external_network_bridge' in l3_agent.ini to an empty string
+  # so that external networks act like provider bridge networks (they
+  # will plug into br-int instead of br-ex)
+  NeutronExternalNetworkBridge: "''"
+
+  Debug: true
+
+  # CIDR subnet mask length for provisioning network
+  ControlPlaneSubnetCidr: '24'
+  # Gateway router for the provisioning network (or Undercloud IP)
+  ControlPlaneDefaultRoute: 192.0.2.254
+  ControlPlaneIp: 192.0.2.1
+  EC2MetadataIp: 192.0.2.1  # Generally the IP of the Undercloud
+  # Customize the IP subnets to match the local environment
+  InternalApiNetCidr: 172.17.0.0/24
+  StorageNetCidr: 172.18.0.0/24
+  StorageMgmtNetCidr: 172.19.0.0/24
+  TenantNetCidr: 172.16.0.0/24
+  ExternalNetCidr: 10.19.108.0/24
+  # Customize the VLAN IDs to match the local environment
+  InternalApiNetworkVlanID: 1020
+  StorageNetworkVlanID: 1030
+  StorageMgmtNetworkVlanID: 1040
+  TenantNetworkVlanID: 1050
+  ExternalNetworkVlanID: 100
+  # Force external VIP
+  ExternalNetworkVip: 10.19.108.51
+  # Customize the IP ranges on each network to use for static IPs and VIPs
+  InternalApiAllocationPools: [{'start': '172.17.0.10', 'end': '172.17.0.200'}]
+  StorageAllocationPools: [{'start': '172.18.0.10', 'end': '172.18.0.200'}]
+  StorageMgmtAllocationPools: [{'start': '172.19.0.10', 'end': '172.19.0.200'}]
+  TenantAllocationPools: [{'start': '172.16.0.10', 'end': '172.16.0.200'}]
+  # Leave room if the external network is also used for floating IPs
+  ExternalAllocationPools: [{'start': '10.19.108.23', 'end': '10.19.108.50'}]
+  # Gateway router for the external network
+  ExternalInterfaceDefaultRoute: 10.19.108.254
+  # Uncomment if using the Management Network (see network-management.yaml)
+  # ManagementNetCidr: 10.0.1.0/24
+  # ManagementAllocationPools: [{'start': '10.0.1.10', 'end', '10.0.1.50'}]
+  # Use either this parameter or ControlPlaneDefaultRoute in the NIC templates
+  # ManagementInterfaceDefaultRoute: 10.0.1.1
+  # Define the DNS servers (maximum 2) for the overcloud nodes
+  DnsServers: ["10.19.143.247","10.19.143.248"]
+  # Set to empty string to enable multiple external networks or VLANs
+  NeutronExternalNetworkBridge: "''"
+  NeutronDhcpAgentDnsmasqDnsServers: ["10.11.5.19","10.16.255.2"]
+  # The tunnel type for the tenant network (vxlan or gre). Set to '' to disable tunneling.
+  NeutronTunnelTypes: "vxlan"
+
+  NeutronNetworkType: 'vxlan,vlan'
+
+  NeutronBridgeMappings: 'datacentre:br-ex,phy-sriov1:br-isolated1,phy-sriov2:br-isolated2'
+
+  NeutronNetworkVLANRanges: 'datacentre:4000:4070,phy-sriov1:4071:4093,phy-sriov2:4071:4093'
+
+  HostCpusList: '4-8'
+
+  # Customize bonding options, e.g. "mode=4 lacp_rate=1 updelay=1000 miimon=100"
+  BondInterfaceOvsOptions: "bond_mode=balance-slb lacp=active"
+  # Compute node kernel args for SR-IOV
+  ComputeKernelArgs: "intel_iommu=on default_hugepagesz=1GB hugepagesz=1G hugepages=12"
+  NeutronMechanismDrivers: "openvswitch,sriovnicswitch"
+  NovaPCIPassthrough:
+    - devname: "ens6f0"
+      physical_network: "phy-sriov1"
+    - devname: "ens6f1"
+      physical_network: "phy-sriov2"
+
+  NovaSchedulerAvailableFilters: ["nova.scheduler.filters.all_filters","nova.scheduler.filters.pci_passthrough_filter.PciPassthroughFilter","nova.scheduler.filters.numa_topology_filter.NUMATopologyFilter","nova.scheduler.filters.aggregate_instance_extra_specs.AggregateInstanceExtraSpecsFilter"]
+
+
+  NovaSchedulerDefaultFilters: ['AvailabilityZoneFilter','RamFilter','ComputeFilter','ComputeCapabilitiesFilter','ImagePropertiesFilter','ServerGroupAntiAffinityFilter','ServerGroupAffinityFilter', 'PciPassthroughFilter', 'NUMATopologyFilter', 'AggregateInstanceExtraSpecsFilter']
+
+  NovaVcpuPinSet: ['4-11','24-35','16-23','36-47']
+
+
+  # Make sure this is for the VFs, not the PF 
+  NeutronSupportedPCIVendorDevs: ['8086:1515']
+
+  
+  #NeutronPhysicalDevMappings: ["phys_sriov_1:ens6f0","phys_sriov_2:ens6f1"]
+  # The line above was wrong because the network names were incorrect, given what we
+  # set them to in NovaPCIPassthrough up above
+  NeutronPhysicalDevMappings: "phy-sriov1:ens6f0,phy-sriov2:ens6f1"
+
+# Number of VFs that needs to be configured for a physical interface  
+  NeutronSriovNumVFs: "ens6f0:5,ens6f1:5"
+
+

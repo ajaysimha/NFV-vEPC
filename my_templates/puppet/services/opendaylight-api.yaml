@@ -1,0 +1,64 @@
+heat_template_version: 2016-04-08
+
+description: >
+  OpenDaylight SDN Controller.
+
+parameters:
+  OpenDaylightPort:
+    default: 8081
+    description: Set opendaylight service port
+    type: number
+  OpenDaylightUsername:
+    default: 'admin'
+    description: The username for the opendaylight server.
+    type: string
+  OpenDaylightPassword:
+    default: 'admin'
+    type: string
+    description: The password for the opendaylight server.
+    hidden: true
+  OpenDaylightEnableL3:
+    description: Knob to enable/disable ODL L3
+    type: string
+    default: 'no'
+  OpenDaylightEnableDHCP:
+    description: Knob to enable/disable ODL DHCP Server
+    type: boolean
+    default: false
+  OpenDaylightFeatures:
+    description: List of features to install with ODL
+    type: comma_delimited_list
+    default: ["odl-netvirt-openstack","odl-netvirt-ui"]
+  OpenDaylightApiVirtualIP:
+    type: string
+    default: ''
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+
+outputs:
+  role_data:
+    description: Role data for the OpenDaylight service.
+    value:
+      service_name: opendaylight_api
+      config_settings:
+        opendaylight::odl_rest_port: {get_param: OpenDaylightPort}
+        opendaylight::username: {get_param: OpenDaylightUsername}
+        opendaylight::password: {get_param: OpenDaylightPassword}
+        opendaylight::enable_l3: {get_param: OpenDaylightEnableL3}
+        opendaylight::extra_features: {get_param: OpenDaylightFeatures}
+        opendaylight::enable_dhcp: {get_param: OpenDaylightEnableDHCP}
+        opendaylight::odl_bind_ip: {get_param: [ServiceNetMap, OpendaylightApiNetwork]}
+      step_config: |
+        include tripleo::profile::base::neutron::opendaylight

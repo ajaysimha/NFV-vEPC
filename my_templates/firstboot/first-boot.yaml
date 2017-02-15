@@ -1,0 +1,140 @@
+heat_template_version: 2014-10-16
+
+description: >
+  This is an example showing how you can do firstboot configuration
+  of the nodes via cloud-init.  To enable this, replace the default
+  mapping of OS::TripleO::NodeUserData in ../overcloud_resource_registry*
+
+parameters:
+  ComputeKernelArgs:
+    description: >
+      Space seprated list of Kernel args to be update to grub.
+      The given args will be appended to existing args of GRUB_CMDLINE_LINUX in file /etc/default/grub
+      Example: "intel_iommu=on default_hugepagesz=1GB hugepagesz=1G hugepages=1"
+    type: string
+    default: ""
+  ComputeHostnameFormat:
+    type: string
+    default: ""
+
+resources:
+  userdata:
+    type: OS::Heat::MultipartMime
+    properties:
+      parts:
+      - config: {get_resource: compute_kernel_args}
+
+  # Verify the logs on /var/log/cloud-init.log on the overcloud node
+  compute_kernel_args:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      config:
+        str_replace:
+          template: |
+            #!/bin/bash
+            set -x
+            FORMAT=$COMPUTE_HOSTNAME_FORMAT
+            if [[ -z $FORMAT ]] ; then
+              FORMAT="compute" ;
+            else
+              # Assumption: only %index% and %stackname% are the variables in Host name format
+              FORMAT=$(echo $FORMAT | sed  's/\%index\%//g' | sed 's/\%stackname\%//g') ;
+            fi
+            if [[ $(hostname) == *$FORMAT* ]] ; then
+              # Disable selinux line added, as we still didn't verified that DPDK feature works with selinux enabled.
+              sed 's/SELINUX=enforcing/SELINUX=permissive/g' -i /etc/selinux/config
+
+              # OVS specific change for enabling DPDK
+              OVS_SERVICE_PATH="/usr/lib/systemd/system/openvswitch-nonetwork.service"
+              grep -q "RuntimeDirectoryMode=.*" $OVS_SERVICE_PATH
+              if [ "$?" -eq 0 ]; then
+                sed -i 's/RuntimeDirectoryMode=.*/RuntimeDirectoryMode=0775/' $OVS_SERVICE_PATH
+              else
+                echo "RuntimeDirectoryMode=0775" >> $OVS_SERVICE_PATH
+              fi
+              grep -Fxq "Group=qemu" $OVS_SERVICE_PATH
+              if [ ! "$?" -eq 0 ]; then
+                echo "Group=qemu" >> $OVS_SERVICE_PATH
+              fi
+              grep -Fxq "UMask=0002" $OVS_SERVICE_PATH
+              if [ ! "$?" -eq 0 ]; then
+                echo "UMask=0002" >> $OVS_SERVICE_PATH
+              fi
+              OVS_CTL_PATH='/usr/share/openvswitch/scripts/ovs-ctl'
+              grep -q "umask 0002 \&\& start_daemon \"\$OVS_VSWITCHD_PRIORITY\"" $OVS_CTL_PATH
+              if [ ! "$?" -eq 0 ]; then
+                sed -i 's/start_daemon \"\$OVS_VSWITCHD_PRIORITY.*/umask 0002 \&\& start_daemon \"$OVS_VSWITCHD_PRIORITY\" \"$OVS_VSWITCHD_WRAPPER\" \"$@\"/' $OVS_CTL_PATH
+              fi
+
+              # Update the KERNEL ARGS to the grub 
+              sed 's/^\(GRUB_CMDLINE_LINUX=".*\)"/\1 $KERNEL_ARGS"/g' -i /etc/default/grub ;
+              grub2-mkconfig -o /etc/grub2.cfg
+
+              # Sometimes, the IP of the provisioning network is not acquired at the time of
+              # cloud-init, which will fail the metadata query, looping for 10seconds to ensure
+              # the network connectivity is ready.
+              i=0
+              while [ $i -lt 5 ]; do
+                NETWORK=$(curl -m 10 http://169.254.169.254/openstack/latest/network_data.json)
+                if [ $? -eq 0 ]; then
+                  # Rebooting without running os-net-config will have default ifcfg scripts which
+                  # is boot the interfaces in alphanumberic order and if DHCPDISCOVER of an interface\
+                  # fails, then the network.service gets failed and does not try others.
+                  # Here we are identifying the provisioning network interface and keep the
+                  # BOOTPROTO as dpch and for all other interfaces make it as none. So that
+                  # network.service will invoke dhcp only on the provisioning network.
+                  # We are identifying the provisioning network using the meta data of the node,
+                  # which will provide the mac address of the provisioning network interface.
+                  # NOTE: Only one provisioning network interface is supported with this script
+
+                  MAC=$(echo $NETWORK | jq -r ".links[0].ethernet_mac_address")
+                  IFACE=$(ip a | grep $MAC -B1 | awk 'NR==1{print $2;}' | cut -d ":" -f1)
+                  find /etc/sysconfig/network-scripts/ -name 'ifcfg-*' ! -name 'ifcfg-'$IFACE -type f -exec sed 's/^BOOTPROTO=.*/BOOTPROTO=none/g' -i {} +
+
+                  reboot
+                  break
+                fi
+                sleep 2
+                i=`expr $i + 1`
+              done
+
+            fi
+
+            if [[ `hostname` = *"ceph"* ]]
+            then
+              echo "Number of disks detected: $(lsblk -no NAME,TYPE,MOUNTPOINT | grep "disk" | awk '{print $1}' | wc -l)"
+              for DEVICE in `lsblk -no NAME,TYPE,MOUNTPOINT | grep "disk" | awk '{print $1}'`
+              do
+                ROOTFOUND=0
+                echo "Checking /dev/$DEVICE..."
+                echo "Number of partitions on /dev/$DEVICE: $(expr $(lsblk -n /dev/$DEVICE | awk '{print $7}' | wc -l) - 1)"
+                for MOUNTS in `lsblk -n /dev/$DEVICE | awk '{print $7}'`
+                do
+                  if [ "$MOUNTS" = "/" ]
+                  then
+                    ROOTFOUND=1
+                  fi
+                done
+                if [ $ROOTFOUND = 0 ]
+                then
+                  echo "Root not found in /dev/${DEVICE}"
+                  echo "Wiping disk /dev/${DEVICE}"
+                  sgdisk -Z /dev/${DEVICE}
+                  sgdisk -g /dev/${DEVICE}
+                else
+                  echo "Root found in /dev/${DEVICE}"
+                fi
+              done
+            fi
+
+          params:
+            $KERNEL_ARGS: {get_param: ComputeKernelArgs}
+            $COMPUTE_HOSTNAME_FORMAT: {get_param: ComputeHostnameFormat}
+
+outputs:
+  # This means get_resource from the parent template will get the userdata, see:
+  # http://docs.openstack.org/developer/heat/template_guide/composition.html#making-your-template-resource-more-transparent
+  # Note this is new-for-kilo, an alternative is returning a value then using
+  # get_attr in the parent template instead.
+  OS::stack_id:
+    value: {get_resource: userdata}
