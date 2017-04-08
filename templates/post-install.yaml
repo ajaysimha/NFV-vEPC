@@ -1,0 +1,89 @@
+heat_template_version: 2014-10-16
+
+description: >
+  Example extra config for post-deployment
+
+parameters:
+  servers:
+    type: json
+
+resources:
+
+  ExtraDeployments:
+    type: OS::Heat::StructuredDeployments
+    properties:
+      servers:  {get_param: servers}
+      config: {get_resource: ExtraConfig}
+      actions: ['CREATE','UPDATE']
+
+  ExtraConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config: |
+        #!/bin/bash
+        set -x
+        function tuned_service_dependency() {
+          tuned_service=/usr/lib/systemd/system/tuned.service
+          grep -q "network.target" $tuned_service
+          if [ "$?" -eq 0 ]; then
+              sed -i '/After=.*/s/network.target//g' $tuned_service
+          fi
+          grep -q "Before=.*network.target" $tuned_service
+          if [ ! "$?" -eq 0 ]; then
+              grep -q "Before=.*" $tuned_service
+              if [ "$?" -eq 0 ]; then
+                  sed -i 's/^\(Before=.*\)/\1 network.target openvswitch.service/g' $tuned_service
+              else
+                  sed -i '/After/i Before=network.target openvswitch.service' $tuned_service
+              fi
+          fi
+        }
+
+        if hiera -c /etc/puppet/hiera.yaml service_names | grep -q neutron_ovs_dpdk_agent; then
+            tuned_service_dependency
+        fi
+
+        # Install some packages
+        yum install tcpdump wget strace screen ftp mlocate -y
+
+        # Update the locate database
+        updatedb
+
+        # Permit root login over SSH
+        sed -i 's/.*ssh-rsa/ssh-rsa/' /root/.ssh/authorized_keys
+        sed -i 's/PasswordAuthentication.*/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+        sed -i 's/ChallengeResponseAuthentication.*/ChallengeResponseAuthentication yes/g' /etc/ssh/sshd_config
+
+        systemctl restart sshd
+
+        # Update the root password to something we know
+        echo redhat | sudo passwd root --stdin
+
+        # Configure a system identifier httpd virtual host
+        yum install httpd -y
+        mkdir -p /var/www/ident/
+
+        cat << FOE > /etc/httpd/conf.d/ident.conf
+        Listen 8088
+        NameVirtualHost *:8088
+
+        <VirtualHost *:8088>
+        DocumentRoot /var/www/ident/
+        </VirtualHost>
+        FOE
+
+        restorecon /etc/httpd/conf.d/ident.conf
+
+        cat << FOE > /var/www/ident/index.html
+        Hello from $(hostname) :-)
+        FOE
+
+        restorecon -R /var/www/ident/
+        chown -R apache:apache /var/www/ident/
+
+        iptables -A INPUT -p tcp -m tcp --dport 8088 -j ACCEPT
+        semanage port -a -t http_port_t -p tcp 8088
+        systemctl start httpd
+        systemctl reload httpd
+        systemctl enable httpd
