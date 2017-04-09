@@ -6,7 +6,7 @@ resource_registry:
   OS::TripleO::Controller::Net::SoftwareConfig: /home/stack/templates/controller.yaml
 
   # Add later after installing 1 controller + 1 compute
-  #OS::TripleO::CephStorage::Net::SoftwareConfig:/home/stack/templates/ceph-storage.yaml
+  OS::TripleO::CephStorage::Net::SoftwareConfig:/home/stack/templates/ceph-storage.yaml
 
   OS::TripleO::NodeUserData: /home/stack/templates/first-boot.yaml
   OS::TripleO::NodeExtraConfigPost: /home/stack/templates/post-install.yaml
@@ -68,12 +68,12 @@ parameter_defaults:
  # Flavor of controller and compute nodes:
   OvercloudControlFlavor: control
   OvercloudComputeFlavor: compute
-  #OvercloudCephStorageFlavor: ceph-storage
+  OvercloudCephStorageFlavor: ceph-storage
 
  # Number of nodes to deploy.
   ControllerCount: 1
   ComputeCount: 2
-  #CephStorageCount: 1
+  CephStorageCount: 1
 
   ##########################
   # OVS DPDK configuration #
