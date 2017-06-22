@@ -65,7 +65,7 @@ parameter_defaults:
   LinuxBondInterfaceOptions: "mode=4 lacp_rate=1 updelay=1000 miimon=100"
   DpdkBondInterfaceOvsOptions: "bond_mode=balance-tcp lacp=active"
 
-  ComputeKernelArgs: "iommu=pt intel_iommu=on default_hugepagesz=1GB hugepagesz=1G hugepages=12"
+  ComputeKernelArgs: "iommu=pt intel_iommu=on default_hugepagesz=1GB hugepagesz=1G hugepages=12 isolcpus=12-23"
 
  # Flavor of controller and compute nodes:
   OvercloudControlFlavor: control
@@ -73,9 +73,9 @@ parameter_defaults:
   OvercloudCephStorageFlavor: ceph-storage
 
  # Number of nodes to deploy.
-  ControllerCount: 3
-  ComputeCount: 5
-  CephStorageCount: 3
+  ControllerCount: 1
+  ComputeCount: 1
+  CephStorageCount: 1
 
   ##########################
   # OVS DPDK configuration #
@@ -85,7 +85,7 @@ parameter_defaults:
   ## Attempting to deploy DPDK without appropriate values will cause deployment to fail or lead to unstable deployments.
 
   # List of cores to be used for DPDK Poll Mode Driver
-  NeutronDpdkCoreList: "'2,3,14,15'"
+  NeutronDpdkCoreList: "'12,13,14,15'"
 
   # NeutronDpdkSocketMemory
   NeutronDpdkSocketMemory: "'1024,1024'"
@@ -109,7 +109,7 @@ parameter_defaults:
   NovaReservedHostMemory: "4096"
 
   # Add a list or range of physical CPU cores to be reserved for virtual machine processes
-  NovaVcpuPinSet: ['4-11','24-35','16-23','36-47']
+  NovaVcpuPinSet: ['16-23']
 
   # List the most restrictive filters first to make the filtering process for the nodes more efficient
   NovaSchedulerDefaultFilters: "RamFilter,ComputeFilter,AvailabilityZoneFilter,ComputeCapabilitiesFilter,ImagePropertiesFilter,PciPassthroughFilter,NUMATopologyFilter"
@@ -127,7 +127,10 @@ parameter_defaults:
   # Set the OpenStack Networking ML2 and Open vSwitch VLAN mapping range:
   NeutronNetworkVLANRanges: 'datacentre:4000:4070, dpdk:4071:4071'
 
-  # Set a list or range of physical CPU cores to be tuned:
-  HostCpusList: "'0,1,12,13'"
+  # Set a list or range of physical CPU cores that should be excluded from tuning:
+  HostCpusList: "'0,1,2,3,4,5,6,7,8,9,10,11,24,25,26,27,28,29,30,31,32,33,34,35'"
 
+  # HostIsolatedCoreList = NeutronDpdkCoreList(12-15) + NovaVcpuPinSet(16-23)
+  HostIsolatedCoreList: "12-23"
+ 
 
