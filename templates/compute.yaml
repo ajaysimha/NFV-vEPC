@@ -121,6 +121,8 @@ resources:
               defroute: false
 
             -
+              type: linux_bridge
+
               type: linux_bond
               name: bond1
               bonding_options: {get_param: LinuxBondInterfaceOptions}
@@ -146,20 +148,7 @@ resources:
               addresses:
                 -
                   ip_netmask: {get_param: StorageIpSubnet}
-            -
-              type: vlan
-              device: bond1
-              vlan_id: {get_param: StorageMgmtNetworkVlanID}
-              addresses:
-                -
-                  ip_netmask: {get_param: StorageMgmtIpSubnet}
-            -
-              type: vlan
-              device: bond1
-              vlan_id: {get_param: TenantNetworkVlanID}
-              addresses:
-                -
-                  ip_netmask: {get_param: TenantIpSubnet}
+            #
             # Uncomment when including environments/network-management.yaml
             #-
             #  type: vlan

@@ -95,7 +95,7 @@ resources:
               use_dhcp: false
               dns_servers: {get_param: DnsServers}
               addresses:
-                -
+                 -
                   ip_netmask:
                     list_join:
                       - '/'
@@ -105,23 +105,29 @@ resources:
                 -
                   ip_netmask: 169.254.169.254/32
                   next_hop: {get_param: EC2MetadataIp}
+                -
+                  default: true
+                  next_hop: {get_param: ControlPlaneDefaultRoute}
 
-            - 
-              type: interface
+            - type: interface
               name: ens255f0
               use_dhcp: false
               defroute: false
-            - 
-              type: interface
-              name: ens6f1
+
+            - type: interface
+              name: ens6f0
               use_dhcp: false
               defroute: false
 
+            - type: interface
+              name: ens6f1
+              use_dhcp: false
+              defroute: false
+            
             -
               type: ovs_bridge
               name: br-isolated
               use_dhcp: false
-
               members:
                 -
                   type: linux_bond
@@ -134,13 +140,7 @@ resources:
                     -
                       type: interface
                       name: ens3f1
-                -
-                  type: vlan
-                  device: br-isolated
-                  vlan_id: {get_param: InternalApiNetworkVlanID}
-                  addresses:
-                    -
-                      ip_netmask: {get_param: InternalApiIpSubnet}
+              
                 -
                   type: vlan
                   device: br-isolated
@@ -151,28 +151,10 @@ resources:
                 -
                   type: vlan
                   device: br-isolated
-                  vlan_id: {get_param:  TenantNetworkVlanID}
-                  addresses:
-                    -
-                      ip_netmask: {get_param: TenantIpSubnet}
-                -
-                  type: vlan
-                  device: br-isolated
                   vlan_id: {get_param: StorageMgmtNetworkVlanID}
                   addresses:
                     -
                       ip_netmask: {get_param: StorageMgmtIpSubnet}
-                -
-                  type: vlan
-                  device: br-isolated
-                  vlan_id: {get_param: ExternalNetworkVlanID}
-                  addresses:
-                    -
-                      ip_netmask: {get_param: ExternalIpSubnet}
-                  routes:
-                    -
-                      default: true
-                      next_hop: {get_param: ExternalInterfaceDefaultRoute}
 
                 # Uncomment when including environments/network-management.yaml
                 #-
@@ -183,33 +165,6 @@ resources:
                 #    -
                 #      ip_netmask: {get_param: ManagementIpSubnet}
 
-
-
-#            -
-#              type: ovs_bridge
-#              name: br-link
-#              use_dhcp: false
-#              members:
-#                -
-#                  type: interface
-#                  name: ens6f0
-#
-            -
-              type: ovs_bridge
-              name: br-link
-              use_dhcp: false
-              members:
-                -
-                  type: linux_bond
-                  name: bond2
-                  bonding_options: {get_param: LinuxBondInterfaceOptions}
-                  members:
-                    -
-                      type: interface
-                      name: ens6f0
-                    -
-                      type: interface
-                      name: ens6f1
 outputs:
   OS::stack_id:
     description: The OsNetConfigImpl resource.
