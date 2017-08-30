@@ -1,0 +1,204 @@
+#This file is an example of an environment file for defining the isolated
+#networks and related parameters.
+resource_registry:
+  # Network Interface templates to use (these files must exist)
+  OS::TripleO::DpdkCompute::Net::SoftwareConfig: /home/stack/templates/dpdk-compute.yaml
+  OS::TripleO::SriovCompute::Net::SoftwareConfig: /home/stack/templates/sriov-compute.yaml
+  OS::TripleO::Controller::Net::SoftwareConfig: /home/stack/templates/controller.yaml
+
+  # Ceph storage nodes configs.
+  OS::TripleO::CephStorage::Net::SoftwareConfig: /home/stack/templates/ceph-storage.yaml
+
+  OS::TripleO::NodeUserData: /home/stack/templates/first-boot.yaml
+  OS::TripleO::NodeExtraConfigPost: /home/stack/templates/post-install.yaml
+
+parameter_defaults:
+  # This section is where deployment-specific configuration is done
+  # CIDR subnet mask length for provisioning network
+  ControlPlaneSubnetCidr: '24'
+  # Gateway router for the provisioning network (or Undercloud IP)
+  ControlPlaneDefaultRoute: 192.0.2.4
+  ControlPlaneIp: 192.0.2.4
+  EC2MetadataIp: 192.0.2.4  # Generally the IP of the Undercloud
+  # Customize the IP subnets to match the local environment
+  InternalApiNetCidr: 172.17.0.0/24
+  StorageNetCidr: 172.18.0.0/24
+  StorageMgmtNetCidr: 172.19.0.0/24
+  TenantNetCidr: 172.16.0.0/24
+  ExternalNetCidr: 10.19.108.0/24
+  # Customize the VLAN IDs to match the local environment
+  InternalApiNetworkVlanID: 1020
+  StorageNetworkVlanID: 1030
+  StorageMgmtNetworkVlanID: 1040
+  TenantNetworkVlanID: 1050
+  ExternalNetworkVlanID: 100
+  # Customize the IP ranges on each network to use for static IPs and VIPs
+  InternalApiAllocationPools: [{'start': '172.17.0.10', 'end': '172.17.0.200'}]
+  StorageAllocationPools: [{'start': '172.18.0.10', 'end': '172.18.0.200'}]
+  StorageMgmtAllocationPools: [{'start': '172.19.0.10', 'end': '172.19.0.200'}]
+  TenantAllocationPools: [{'start': '172.16.0.10', 'end': '172.16.0.200'}]
+  # Leave room if the external network is also used for floating IPs
+  ExternalAllocationPools: [{'start': '10.19.108.23', 'end': '10.19.108.50'}]
+  ExternalNetworkVip: 10.19.108.51
+
+# Specify the NTP server for nodes to use
+  NtpServer: 10.5.26.10
+# Customize the IP ranges on each network to use for static IPs and VIPs
+
+
+  # Gateway router for the external network
+  ExternalInterfaceDefaultRoute: 10.19.108.254
+
+
+  # Uncomnent if using the Management Network (see network-management.yaml)
+  # ManagementNetCidr: 10.0.1.0/24
+  # ManagementAllocationPools: [{'start': '10.0.1.10', 'end', '10.0.1.50'}]
+  # Use either this parameter or ControlPlaneDefaultRoute in the NIC templates
+  # ManagementInterfaceDefaultRoute: 10.0.1.1
+  # Define the DNS servers (maximum 2) for the overcloud nodes
+  DnsServers: ["8.8.8.8","8.8.4.4"]
+
+  # Set to empty string to enable multiple external networks or VLANs
+  NeutronExternalNetworkBridge: "''"
+
+  # Customize bonding options, e.g. "mode=4 lacp_rate=1 updelay=1000 miimon=100"
+  # LinuxBondInterfaceOptions: "mode=802.3ad" <== Don't use this use next one specifying details to make it faster
+  LinuxBondInterfaceOptions: "mode=4 lacp_rate=1 updelay=1000 miimon=100"
+
+
+ # Flavor of controller and compute nodes:
+  OvercloudSriovComputeFlavor: sriovcompute
+  OvercloudControlFlavor: control
+  OvercloudDpdkComputeFlavor: dpdkcompute
+  OvercloudCephStorageFlavor: ceph-storage
+  
+ # Number of nodes to deploy.
+  ControllerCount: 1
+  DpdkComputeCount: 1
+  CephStorageCount: 1
+  SriovComputeCount: 1 
+
+  ##################################
+  # Common performance paramenters
+  ##################################
+
+#  ComputeKernelArgs: "iommu=pt intel_iommu=on default_hugepagesz=1GB hugepagesz=1G hugepages=12 isolcpus=12-23"
+  ComputeKernelArgs: "intel_iommu=on default_hugepagesz=1GB hugepagesz=1G hugepages=12"
+
+  # Add a list or range of physical CPU cores to be reserved for virtual machine processes
+  NovaVcpuPinSet: ['16-23']
+ 
+  # Set the tunnel type for tenant network (for example, vxlan or gre). To disable the tunnel type parameter, set the value to ""
+  NeutronTunnelTypes: ""
+ 
+  # Set the tenant network type for OpenStack Networking. The options available are vlan or vxlan:
+  NeutronNetworkType: 'vlan'
+ 
+  # Network VLAN ranges for both SRIOV and DPDK:
+  NeutronNetworkVLANRanges: 'datacentre:4000:4070,dpdk:4071:4071,phy-sriov1:4071:4071,phy-sriov2:4071:4071'
+
+  # Neutron Bridge Mappings for both SRIOV and DPDK networks:
+  NeutronBridgeMappings: 'datacentre:br-isolated, dpdk:br-link,phy-sriov1:br-isolated1,phy-sriov2:br-isolated2'
+
+  ##########################
+  # OVS DPDK configuration #
+  ##########################
+
+  ## NeutronDpdkCoreList and NeutronDpdkMemoryChannels are REQUIRED settings.
+  ## Attempting to deploy DPDK without appropriate values will cause deployment to fail or lead to unstable deployments.
+
+  # For OVS-DPDK-BONDs
+  DpdkBondInterfaceOvsOptions: "bond_mode=balance-tcp lacp=active"
+
+  # List of cores to be used for DPDK Poll Mode Driver
+  NeutronDpdkCoreList: "'12,13,14,15'"
+
+  # NeutronDpdkSocketMemory
+  NeutronDpdkSocketMemory: "'1024,1024'"
+
+  # NeutronDpdkDriverType
+  NeutronDpdkDriverType: "vfio-pci"
+
+
+  # Number of memory channels to be used for DPDK
+  NeutronDpdkMemoryChannels: "4"
+
+
+  # Datapath type for ovs bridges
+  NeutronDatapathType: "netdev"
+
+  # The vhost-user socket directory for OVS
+  NeutronVhostuserSocketDir: "/var/run/openvswitch"
+
+
+  # Reserve the RAM for the host processes
+  NovaReservedHostMemory: "4096"
+
+
+
+  # List the most restrictive filters first to make the filtering process for the nodes more efficient
+#  NovaSchedulerDefaultFilters: "RamFilter,ComputeFilter,AvailabilityZoneFilter,ComputeCapabilitiesFilter,ImagePropertiesFilter,PciPassthroughFilter,NUMATopologyFilter"
+
+
+  # Set the Open vSwitch logical to physical bridge mappings:
+#  NeutronBridgeMappings: 'datacentre:br-isolated, dpdk:br-link'
+
+  # Set the OpenStack Networking ML2 and Open vSwitch VLAN mapping range:
+#  NeutronNetworkVLANRanges: 'datacentre:4000:4070, dpdk:4071:4071'
+
+  # Set a list or range of physical CPU cores that should be excluded from tuning:
+  HostCpusList: "'0,1,2,3,4,5,6,7,8,9,10,11,24,25,26,27,28,29,30,31,32,33,34,35'"
+
+  # HostIsolatedCoreList = NeutronDpdkCoreList(12-15) + NovaVcpuPinSet(16-23)
+  HostIsolatedCoreList: "12-23"
+
+
+  NeutronMechanismDrivers: "openvswitch"
+
+
+ ########################
+ # SR-IOV configuration #
+ ########################
+
+#  NeutronMechanismDrivers: "openvswitch,sriovnicswitch"
+
+#  NeutronBridgeMappings: 'datacentre:br-isolated,phy-sriov1:br-isolated1,phy-sriov2:br-isolated2'
+
+#  NeutronNetworkVLANRanges: 'datacentre:4000:4070,phy-sriov1:4071:4071,phy-sriov2:4071:4071'
+
+#  NovaPCIPassthrough: 
+#    - devname: "ens6f0"
+#      physical_network: "phy-sriov1"
+#    - devname: "ens6f1"
+#      physical_network: "phy-sriov2"
+
+#  NeutronSupportedPCIVendorDevs: ['8086:1515']
+#  NeutronPhysicalDevMappings: "phy-sriov1:ens6f0,phy-sriov2:ens6f1"
+#  NeutronSriovNumVFs: "ens6f0:5,ens6f1:5"
+# NeutronTunnelTypes: ''
+# NeutronNetworkType: 'vlan'
+
+  NovaSchedulerAvailableFilters: ["nova.scheduler.filters.all_filters","nova.scheduler.filters.pci_passthrough_filter.PciPassthroughFilter","nova.scheduler.filters.numa_topology_filter.NUMATopologyFilter","nova.scheduler.filters.aggregate_instance_extra_specs.AggregateInstanceExtraSpecsFilter"]
+
+  NovaSchedulerDefaultFilters: ['AvailabilityZoneFilter','RamFilter','ComputeFilter','ComputeCapabilitiesFilter','ImagePropertiesFilter','ServerGroupAntiAffinityFilter','ServerGroupAffinityFilter', 'PciPassthroughFilter', 'NUMATopologyFilter', 'AggregateInstanceExtraSpecsFilter']
+
+#  NovaVcpuPinSet: ['4-11','24-35','16-23','36-47']
+
+  # Sriov Specific Parameters
+  SriovComputeExtraConfig:
+    neutron::plugins::ml2::mechanism_drivers: ["openvswitch","sriovnicswitch"]  # NeutronMechanismDrivers
+    nova::compute::pci_passthrough: "'[{\"devname\": \"ens6f0\", \"physical_network\": \"phy-sriov1\"},{\"devname\": \"ens6f1\", \"physical_network\": \"phy-sriov2\"}]'" #NovaPCIPassthrough
+    neutron::plugins::ml2::supported_pci_vendor_devs: ['8086:1515'] #NeutronSupportedPCIVendorDevs 
+    neutron::agents::ml2::sriov::physical_device_mappings: "phy-sriov1:ens6f0,phy-sriov2:ens6f1" #NeutronPhysicalDevMappings
+    tripleo::host::sriov::number_of_vfs: ["ens6f0:5","ens6f1:5"]  #NeutronSriovNumVFs
+#    neutron::agents::ml2::ovs::bridge_mappings: ["datacentre:br-isolated","phy-sriov1:br-isolated1","phy-sriov2:br-isolated2"] # NeutronBridgeMappings
+#    neutron::plugins::ml2::network_vlan_ranges: ["datacentre:4000:4070","phy-sriov1:4071:4071","phy-sriov2:4071:4071"] # NeutronNetworkVLANRanges
+#    nova::compute::vcpu_pin_set: ['4-11','24-35','16-23','36-47'] # NovaVcpuPinSet
+#    neutron::agents::ml2::ovs::tunnel_types: '' # NeutronTunnelTypes
+#    neutron::plugins::ml2::tenant_network_types: 'vlan' # NeutronNetworkType
+  
+
+
+  # Variables that cannot be passed through Hiera Data
+  # HostCpusList: '4-8'
+  BondInterfaceOvsOptions: "bond_mode=balance-slb lacp=active"
