@@ -190,7 +190,7 @@ resources:
 #              members:
 #                -
 #                  type: interface
-#                  name: ens6f0
+#                  name: ens6f1
 #
             -
               type: ovs_bridge
@@ -208,6 +208,7 @@ resources:
                     -
                       type: interface
                       name: ens6f1
+
 outputs:
   OS::stack_id:
     description: The OsNetConfigImpl resource.

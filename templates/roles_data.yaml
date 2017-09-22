@@ -96,9 +96,9 @@
     - OS::TripleO::Services::FluentdClient
     - OS::TripleO::Services::VipHosts
 
-- name: DpdkCompute
+- name: ComputeOvsDpdk
   CountDefault: 1
-  HostnameFormatDefault: '%stackname%-dpdkcompute-%index%'
+  HostnameFormatDefault: '%stackname%-compute-ovs-dpdk-%index%'
   ServicesDefault:
     - OS::TripleO::Services::CACerts
     - OS::TripleO::Services::CephClient
@@ -106,21 +106,20 @@
     - OS::TripleO::Services::Timezone
     - OS::TripleO::Services::Ntp
     - OS::TripleO::Services::Snmp
+    - OS::TripleO::Services::Sshd
     - OS::TripleO::Services::NovaCompute
     - OS::TripleO::Services::NovaLibvirt
     - OS::TripleO::Services::Kernel
     - OS::TripleO::Services::ComputeNeutronCorePlugin
-    - OS::TripleO::Services::ComputeNeutronOvsAgent
+    - OS::TripleO::Services::ComputeNeutronOvsDpdkAgent
     - OS::TripleO::Services::ComputeCeilometerAgent
     - OS::TripleO::Services::ComputeNeutronL3Agent
     - OS::TripleO::Services::ComputeNeutronMetadataAgent
     - OS::TripleO::Services::TripleoPackages
     - OS::TripleO::Services::TripleoFirewall
-    - OS::TripleO::Services::NeutronSriovAgent
     - OS::TripleO::Services::OpenDaylightOvs
     - OS::TripleO::Services::SensuClient
     - OS::TripleO::Services::FluentdClient
-    - OS::TripleO::Services::VipHosts
 
 - name: BlockStorage
   ServicesDefault:
@@ -165,9 +164,9 @@
     - OS::TripleO::Services::FluentdClient
     - OS::TripleO::Services::VipHosts
 
-- name: SriovCompute
+- name: ComputeSriov
   CountDefault: 1
-  HostnameFormatDefault: '%stackname%-sriovcompute-%index%'
+  HostnameFormatDefault: '%stackname%-compute-sriov-%index%'
   ServicesDefault:
     - OS::TripleO::Services::CACerts
     - OS::TripleO::Services::CephClient
@@ -175,6 +174,7 @@
     - OS::TripleO::Services::Timezone
     - OS::TripleO::Services::Ntp
     - OS::TripleO::Services::Snmp
+    - OS::TripleO::Services::Sshd
     - OS::TripleO::Services::NovaCompute
     - OS::TripleO::Services::NovaLibvirt
     - OS::TripleO::Services::Kernel
@@ -189,4 +189,3 @@
     - OS::TripleO::Services::OpenDaylightOvs
     - OS::TripleO::Services::SensuClient
     - OS::TripleO::Services::FluentdClient
-    - OS::TripleO::Services::VipHosts

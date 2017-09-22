@@ -13,35 +13,27 @@ parameters:
       Example: "intel_iommu=on default_hugepagesz=1GB hugepagesz=1G hugepages=1"
     type: string
     default: ""
-  DpdkComputeHostnameFormat:
+  ComputeOvsDpdkHostnameFormat:
     type: string
     default: ""
-  SriovComputeHostnameFormat:
-    type: string
-    default: ""
-  HostIsolatedCoreList:
-    description: >
-      A list or range of physical CPU cores to be tuned as isolated_cores.
-      The given args will be appended to the tuned cpu-partitioning profile.
-      Ex. HostIsolatedCoreList: '4-12' will tune cores from 4-12
+  ComputeSriovHostnameFormat:
     type: string
     default: ""
   HostCpusList:
     description: >
-      List of logical cores to be used by ovs-dpdk processes (dpdk-lcore-mask)
-    type: string
-    constraints:
-      - allowed_pattern: "'[0-9,]+'"
-  NeutronDpdkCoreList:
-    description: >
-      List of logical cores for PMD threads. (pmd-cpu-mask)
-    type: string
-    constraints:
-      - allowed_pattern: "'[0-9,]+'"
-  NeutronDpdkSocketMemory:
-    description: Memory allocated for each socket
+      A list or range of physical CPU cores to be tuned.
+      The given args will be appended to the tuned cpu-partitioning profile.
+      Ex. HostCpusList: '4-12' will tune cores from 4-12
     type: string
     default: ""
+  NeutronDpdkCoreList:
+    description: >
+      List of logical cores for PMD threads. Its mandatory parameter.
+    type: string
+  NeutronDpdkSocketMemory:
+    description: Memory allocated for each socket
+    default: ""
+    type: string
 
 resources:
   userdata:
@@ -51,151 +43,6 @@ resources:
       - config: {get_resource: set_dpdk_params}
       - config: {get_resource: compute_kernel_args}
       - config: {get_resource: wipe_disks}
-
-  # Verify the logs on /var/log/cloud-init.log on the overcloud node
-  compute_kernel_args:
-    type: OS::Heat::SoftwareConfig
-    properties:
-      config:
-        str_replace:
-          template: |
-            #!/bin/bash
-            set -x
-            #################################################################
-            # Disable selinux
-            sed 's/SELINUX=enforcing/SELINUX=permissive/g' -i /etc/selinux/config
-            setenforce 0
-            #################################################################
-            FORMAT=$DPDK_COMPUTE_HOSTNAME_FORMAT
-            if [[ -z $FORMAT ]] ; then
-              FORMAT="compute" ;
-            else
-              # Assumption: only %index% and %stackname% are the variables in Host name format
-              FORMAT=$(echo $FORMAT | sed  's/\%index\%//g' | sed 's/\%stackname\%//g') ;
-            fi
-            if [[ $(hostname) == *$FORMAT* ]] ; then
-              # Apply Tuned to if the package is installed
-              # Tuned package has to be installed
-              # Install the tuned package
-              #
-              # Removed the line below because we are using an overcloud image
-              # with tuned profile already installed - AJB 5/1/2017
-              #
-              #yum install -y tuned-profiles-cpu-partitioning
-
-              if yum  list installed | grep tuned-profiles-cpu-partitioning; then
-                tuned_conf_path="/etc/tuned/cpu-partitioning-variables.conf"
-                if [ -n "$TUNED_CORES" ]; then
-                  grep -q "^isolated_cores" $tuned_conf_path
-                  if [ "$?" -eq 0 ]; then
-                    sed -i 's/^isolated_cores=.*/isolated_cores=$TUNED_CORES/' $tuned_conf_path
-                  else
-                    echo "isolated_cores=$TUNED_CORES" >> $tuned_conf_path
-                  fi
-                  tuned-adm profile cpu-partitioning
-                fi
-              fi
-
-              #################################################################
-              ovs_service_path="/usr/lib/systemd/system/ovs-vswitchd.service"
-              grep -q "RuntimeDirectoryMode=.*" $ovs_service_path
-              if [ "$?" -eq 0 ]; then
-                sed -i 's/RuntimeDirectoryMode=.*/RuntimeDirectoryMode=0775/' $ovs_service_path
-              else
-                echo "RuntimeDirectoryMode=0775" >> $ovs_service_path
-              fi
-                grep -Fxq "Group=qemu" $ovs_service_path
-              if [ ! "$?" -eq 0 ]; then
-                echo "Group=qemu" >> $ovs_service_path
-              fi
-              grep -Fxq "UMask=0002" $ovs_service_path
-              if [ ! "$?" -eq 0 ]; then
-                echo "UMask=0002" >> $ovs_service_path
-              fi
-              ovs_ctl_path='/usr/share/openvswitch/scripts/ovs-ctl'
-              grep -q "umask 0002 \&\& start_daemon \"\$OVS_VSWITCHD_PRIORITY\"" $ovs_ctl_path
-              if [ ! "$?" -eq 0 ]; then
-                sed -i 's/start_daemon \"\$OVS_VSWITCHD_PRIORITY.*/umask 0002 \&\& start_daemon \"$OVS_VSWITCHD_PRIORITY\" \"$OVS_VSWITCHD_WRAPPER\" \"$@\"/' $ovs_ctl_path
-              fi
-
-              #################################################################
-              # Update the KERNEL ARGS to the grub
-              sed 's/^\(GRUB_CMDLINE_LINUX=".*\)"/\1 $KERNEL_ARGS"/g' -i /etc/default/grub ;
-              grub2-mkconfig -o /etc/grub2.cfg
-
-              # Sometimes, the IP of the provisioning network is not acquired at the time of
-              # cloud-init, which will fail the metadata query, looping for 10seconds to ensure
-              # the network connectivity is ready.
-              i=0
-              while [ $i -lt 5 ]; do
-                NETWORK=$(curl -m 10 http://169.254.169.254/openstack/latest/network_data.json)
-                if [ $? -eq 0 ]; then
-                  # Rebooting without running os-net-config will have default ifcfg scripts which
-                  # is boot the interfaces in alphanumberic order and if DHCPDISCOVER of an interface\
-                  # fails, then the network.service gets failed and does not try others.
-                  # Here we are identifying the provisioning network interface and keep the
-                  # BOOTPROTO as dpch and for all other interfaces make it as none. So that
-                  # network.service will invoke dhcp only on the provisioning network.
-                  # We are identifying the provisioning network using the meta data of the node,
-                  # which will provide the mac address of the provisioning network interface.
-                  # NOTE: Only one provisioning network interface is supported with this script
-
-                  MAC=$(echo $NETWORK | jq -r ".links[0].ethernet_mac_address")
-                  IFACE=$(ip a | grep $MAC -B1 | awk 'NR==1{print $2;}' | cut -d ":" -f1)
-                  find /etc/sysconfig/network-scripts/ -name 'ifcfg-*' ! -name 'ifcfg-'$IFACE -type f -exec sed 's/^BOOTPROTO=.*/BOOTPROTO=none/g' -i {} +
-
-                  reboot
-                  break
-                fi
-                sleep 2
-                i=`expr $i + 1`
-              done
-
-            fi
-
-            FORMAT=$SRIOV_COMPUTE_HOSTNAME_FORMAT
-            if [[ -z $FORMAT ]] ; then
-              FORMAT="compute" ;
-            else
-             # Assumption: only %index% and %stackname% are the variables in Host name format
-              FORMAT=$(echo $FORMAT | sed  's/\%index\%//g' | sed 's/\%stackname\%//g') ;
-            fi
-            if [[ $(hostname) == *$FORMAT* ]] ; then
-              sed 's/^\(GRUB_CMDLINE_LINUX=".*\)"/\1 $KERNEL_ARGS"/g' -i /etc/default/grub ;
-              grub2-mkconfig -o /etc/grub2.cfg
-
-              i=0
-              while [ $i -lt 5 ]; do
-                NETWORK=$(curl -m 10 http://169.254.169.254/openstack/latest/network_data.json)
-                if [ $? -eq 0 ]; then
-                  # Rebooting without running os-net-config will have default ifcfg scripts which
-                  # is boot the interfaces in alphanumberic order and if DHCPDISCOVER of an interface\
-                  # fails, then the network.service gets failed and does not try others.
-                  # Here we are identifying the provisioning network interface and keep the
-                  # BOOTPROTO as dpch and for all other interfaces make it as none. So that
-                  # network.service will invoke dhcp only on the provisioning network.
-                  # We are identifying the provisioning network using the meta data of the node,
-                  # which will provide the mac address of the provisioning network interface.
-                  # NOTE: Only one provisioning network interface is supported with this script
-
-                  MAC=$(echo $NETWORK | jq -r ".links[0].ethernet_mac_address")
-                  IFACE=$(ip a | grep $MAC -B1 | awk 'NR==1{print $2;}' | cut -d ":" -f1)
-                  find /etc/sysconfig/network-scripts/ -name 'ifcfg-*' ! -name 'ifcfg-'$IFACE -type f -exec sed 's/^BOOTPROTO=.*/BOOTPROTO=none/g' -i {} +
-
-                  reboot
-                  break
-                fi
-                sleep 2
-                i=`expr $i + 1`
-              done
-
-            fi
-
-          params:
-            $KERNEL_ARGS: {get_param: ComputeKernelArgs}
-            $DPDK_COMPUTE_HOSTNAME_FORMAT: {get_param: DpdkComputeHostnameFormat}
-            $SRIOV_COMPUTE_HOSTNAME_FORMAT: {get_param: SriovComputeHostnameFormat}
-            $TUNED_CORES: {get_param: HostIsolatedCoreList}
 
   set_dpdk_params:
     type: OS::Heat::SoftwareConfig
@@ -216,7 +63,6 @@ resources:
                   index=$(($core/32))
                   bm[$index]=0
                   if [ $max_idx -lt $index ]; then
-                     #max_idx=$index
                      max_idx=$(($index))
                   fi
               done
@@ -227,10 +73,10 @@ resources:
               for core in $(echo $list | sed 's/,/ /g')
               do
                   index=$(($core/32))
-                  #temp=$((1<<$(core % 32)))
                   temp=$((1<<$(($core % 32))))
                   bm[$index]=$((${bm[$index]} | $temp))
               done
+
               printf -v mask "%x" "${bm[$max_idx]}"
               for ((i=$max_idx-1;i>=0;i--));
               do
@@ -240,8 +86,7 @@ resources:
               printf "%s" "$mask"
             }
 
-
-            FORMAT=$DPDK_COMPUTE_HOSTNAME_FORMAT
+            FORMAT=$COMPUTE_OVS_DPDK_HOSTNAME_FORMAT
             if [[ -z $FORMAT ]] ; then
               FORMAT="compute" ;
             else
@@ -249,19 +94,121 @@ resources:
               FORMAT=$(echo $FORMAT | sed  's/\%index\%//g' | sed 's/\%stackname\%//g') ;
             fi
             if [[ $(hostname) == *$FORMAT* ]] ; then
-              pmd_cpu_mask=$( get_mask $PMD_CORES )
-              host_cpu_mask=$( get_mask $LCORE_LIST )
+              if [ -f /usr/lib/systemd/system/openvswitch-nonetwork.service ]; then
+                ovs_service_path="/usr/lib/systemd/system/openvswitch-nonetwork.service"
+              elif [ -f /usr/lib/systemd/system/ovs-vswitchd.service ]; then
+                ovs_service_path="/usr/lib/systemd/system/ovs-vswitchd.service"
+              fi
+              grep -q "RuntimeDirectoryMode=.*" $ovs_service_path
+              if [ "$?" -eq 0 ]; then
+                sed -i 's/RuntimeDirectoryMode=.*/RuntimeDirectoryMode=0775/' $ovs_service_path
+              else
+                echo "RuntimeDirectoryMode=0775" >> $ovs_service_path
+              fi
+              grep -Fxq "Group=qemu" $ovs_service_path
+              if [ ! "$?" -eq 0 ]; then
+                echo "Group=qemu" >> $ovs_service_path
+              fi
+              grep -Fxq "UMask=0002" $ovs_service_path
+              if [ ! "$?" -eq 0 ]; then
+                echo "UMask=0002" >> $ovs_service_path
+              fi
+              ovs_ctl_path='/usr/share/openvswitch/scripts/ovs-ctl'
+              grep -q "umask 0002 \&\& start_daemon \"\$OVS_VSWITCHD_PRIORITY\"" $ovs_ctl_path
+              if [ ! "$?" -eq 0 ]; then
+                sed -i 's/start_daemon \"\$OVS_VSWITCHD_PRIORITY.*/umask 0002 \&\& start_daemon \"$OVS_VSWITCHD_PRIORITY\" \"$OVS_VSWITCHD_WRAPPER\" \"$@\"/' $ovs_ctl_path
+              fi
+
+              tuned_service=/usr/lib/systemd/system/tuned.service
+              grep -q "network.target" $tuned_service
+              if [ "$?" -eq 0 ]; then
+                sed -i '/After=.*/s/network.target//g' $tuned_service
+              fi
+              grep -q "Before=.*network.target" $tuned_service
+              if [ ! "$?" -eq 0 ]; then
+                grep -q "Before=.*" $tuned_service
+                if [ "$?" -eq 0 ]; then
+                  sed -i 's/^\(Before=.*\)/\1 network.target openvswitch.service/g' $tuned_service
+                else
+                  sed -i '/After/i Before=network.target openvswitch.service' $tuned_service
+                fi
+              fi
+
+              pmd_cpu_mask=$( get_mask $DPDK_PMD_CORES )
+              host_cpu_mask=$( get_mask $TUNED_CORES )
               ovs-vsctl --no-wait set Open_vSwitch . other_config:dpdk-init=true
               ovs-vsctl --no-wait set Open_vSwitch . other_config:dpdk-socket-mem=$SOCKET_MEMORY
               ovs-vsctl --no-wait set Open_vSwitch . other_config:pmd-cpu-mask=$pmd_cpu_mask
               ovs-vsctl --no-wait set Open_vSwitch . other_config:dpdk-lcore-mask=$host_cpu_mask
+
+              sed -ri '/^DPDK_OPTIONS/s/-l [0-9\,]+ /-l 0 /' /etc/sysconfig/openvswitch
+
+              systemctl daemon-reload
+              systemctl restart openvswitch
             fi
           params:
-            $DPDK_COMPUTE_HOSTNAME_FORMAT: {get_param: DpdkComputeHostnameFormat}
-            $LCORE_LIST: {get_param: HostCpusList}
-            $PMD_CORES: {get_param: NeutronDpdkCoreList}
+            $DPDK_PMD_CORES: {get_param: NeutronDpdkCoreList}
+            $COMPUTE_OVS_DPDK_HOSTNAME_FORMAT: {get_param: ComputeOvsDpdkHostnameFormat}
+            $TUNED_CORES: {get_param: HostCpusList}
             $SOCKET_MEMORY: {get_param: NeutronDpdkSocketMemory}
- 
+
+
+  # Verify the logs on /var/log/cloud-init.log on the overcloud node
+  compute_kernel_args:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      config:
+        str_replace:
+          template: |
+            #!/bin/bash
+            set -x
+            FORMAT=$COMPUTE_OVS_DPDK_HOSTNAME_FORMAT
+            if [[ -z $FORMAT ]] ; then
+              FORMAT="compute" ;
+            else
+              # Assumption: only %index% and %stackname% are the variables in Host name format
+              FORMAT=$(echo $FORMAT | sed  's/\%index\%//g' | sed 's/\%stackname\%//g') ;
+            fi
+            if [[ $(hostname) == *$FORMAT* ]] ; then
+              # Install the tuned package
+              yum install -y tuned-profiles-cpu-partitioning
+
+              tuned_conf_path="/etc/tuned/cpu-partitioning-variables.conf"
+              if [ -n "$TUNED_CORES" ]; then
+                grep -q "^isolated_cores" $tuned_conf_path
+                if [ "$?" -eq 0 ]; then
+                  sed -i 's/^isolated_cores=.*/isolated_cores=$TUNED_CORES/' $tuned_conf_path
+                else
+                  echo "isolated_cores=$TUNED_CORES" >> $tuned_conf_path
+                fi
+                tuned-adm profile cpu-partitioning
+              fi
+
+              sed 's/^\(GRUB_CMDLINE_LINUX=".*\)"/\1 $KERNEL_ARGS"/g' -i /etc/default/grub ;
+              grub2-mkconfig -o /etc/grub2.cfg
+
+              reboot
+            fi
+
+            FORMAT=$COMPUTE_SRIOV_HOSTNAME_FORMAT
+            if [[ -z $FORMAT ]] ; then
+              FORMAT="compute" ;
+            else
+              # Assumption: only %index% and %stackname% are the variables in Host name format
+              FORMAT=$(echo $FORMAT | sed  's/\%index\%//g' | sed 's/\%stackname\%//g') ;
+            fi
+            if [[ $(hostname) == *$FORMAT* ]] ; then
+              sed 's/^\(GRUB_CMDLINE_LINUX=".*\)"/\1 $KERNEL_ARGS"/g' -i /etc/default/grub ;
+              grub2-mkconfig -o /etc/grub2.cfg
+
+              reboot
+            fi
+          params:
+            $KERNEL_ARGS: {get_param: ComputeKernelArgs}
+            $COMPUTE_OVS_DPDK_HOSTNAME_FORMAT: {get_param: ComputeOvsDpdkHostnameFormat}
+            $COMPUTE_SRIOV_HOSTNAME_FORMAT: {get_param: ComputeSriovHostnameFormat}
+            $TUNED_CORES: {get_param: HostCpusList}
+
   wipe_disks:
     type: OS::Heat::SoftwareConfig
     properties:
@@ -293,7 +240,7 @@ resources:
             fi
           done
         fi
-        
+
 outputs:
   # This means get_resource from the parent template will get the userdata, see:
   # http://docs.openstack.org/developer/heat/template_guide/composition.html#making-your-template-resource-more-transparent
@@ -301,4 +248,3 @@ outputs:
   # get_attr in the parent template instead.
   OS::stack_id:
     value: {get_resource: userdata}
-

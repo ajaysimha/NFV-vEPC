@@ -2,12 +2,9 @@
 #networks and related parameters.
 resource_registry:
   # Network Interface templates to use (these files must exist)
-  OS::TripleO::ComputeOvsDpdk::Net::SoftwareConfig: /home/stack/templates/dpdk-compute.yaml
-  OS::TripleO::ComputeSriov::Net::SoftwareConfig: /home/stack/templates/sriov-compute.yaml
+  OS::TripleO::Compute::Net::SoftwareConfig: /home/stack/templates/dpdk-compute.yaml
+  OS::TripleO::SriovCompute::Net::SoftwareConfig: /home/stack/templates/sriov-compute.yaml
   OS::TripleO::Controller::Net::SoftwareConfig: /home/stack/templates/controller.yaml
-
-  OS::TripleO::Services::ComputeNeutronOvsDpdkAgent: /usr/share/openstack-tripleo-heat-templates/puppet/services/neutron-ovs-dpdk-agent.yaml
-  OS::TripleO::Services::NeutronSriovAgent: /usr/share/openstack-tripleo-heat-templates/puppet/services/neutron-sriov-agent.yaml
 
   # Ceph storage nodes configs.
   OS::TripleO::CephStorage::Net::SoftwareConfig: /home/stack/templates/ceph-storage.yaml
@@ -101,7 +98,7 @@ parameter_defaults:
   NeutronNetworkType: 'vlan'
  
   # Network VLAN ranges for both SRIOV and DPDK:
-  NeutronNetworkVLANRanges: 'datacentre:4000:4070,tenant:4071:4071,tenant:4072:4072'
+  NeutronNetworkVLANRanges: 'datacentre:4000:4070,tenant:4071:4071'
 
   # Neutron Bridge Mappings for both SRIOV and DPDK networks:
   NeutronBridgeMappings: 'datacentre:br-isolated, tenant:br-link'
@@ -137,11 +134,24 @@ parameter_defaults:
   # Reserve the RAM for the host processes
   NovaReservedHostMemory: "4096"
 
+  # List the most restrictive filters first to make the filtering process for the nodes more efficient
+#  NovaSchedulerDefaultFilters: "RamFilter,ComputeFilter,AvailabilityZoneFilter,ComputeCapabilitiesFilter,ImagePropertiesFilter,PciPassthroughFilter,NUMATopologyFilter"
+
+  # Set the Open vSwitch logical to physical bridge mappings:
+#  NeutronBridgeMappings: 'datacentre:br-isolated, dpdk:br-link'
+
+  # Set the OpenStack Networking ML2 and Open vSwitch VLAN mapping range:
+ # NeutronNetworkVLANRanges: 'datacentre:4000:4070, dpdk:4071:4071'
+
   # Set a list or range of physical CPU cores that should be excluded from tuning:
   HostCpusList: "0,1,2,3,4,5,6,7,8,9,10,11,24,25,26,27,28,29,30,31,32,33,34,35"
 
   # HostIsolatedCoreList = NeutronDpdkCoreList(12-15) + NovaVcpuPinSet(16-23)
   HostIsolatedCoreList: "12-23"
+
+#  ComputeOvsDpdkExtraConfig:
+#    neutron::agents::ml2::ovs::bridge_mappings: ["datacentre:br-isolated","dpdk:br-link"]
+#    neutron::plugins::ml2::network_vlan_ranges: ["datacentre:4000:4070","dpdk:4071:4071"]
 
  ########################
  # SR-IOV configuration #
@@ -149,12 +159,40 @@ parameter_defaults:
 
   NeutronMechanismDrivers: "openvswitch,sriovnicswitch"
 
+#  NeutronBridgeMappings: 'datacentre:br-isolated,phy-sriov1:br-isolated1'
+
+#  NeutronNetworkVLANRanges: 'datacentre:4000:4070,phy-sriov1:4071:4071,phy-sriov2:4071:4071'
+
   NovaPCIPassthrough: 
+#    - devname: "ens6f0"
+#      physical_network: "phy-sriov1"
     - devname: "ens6f1"
       physical_network: "tenant"
 
   NeutronSupportedPCIVendorDevs: ['8086:1515']
   NeutronPhysicalDevMappings: "tenant:ens6f1"
   NeutronSriovNumVFs: "ens6f1:5"
+# NeutronTunnelTypes: ''
+# NeutronNetworkType: 'vlan'
 
+#  NovaVcpuPinSet: ['4-11','24-35','16-23','36-47']
+
+  # Sriov Specific Parameters
+#  ComputeSriovExtraConfig:
+#    neutron::plugins::ml2::mechanism_drivers: ["openvswitch","sriovnicswitch"]  # NeutronMechanismDrivers
+#    nova::compute::pci_passthrough: "'[{\"devname\": \"ens6f0\", \"physical_network\": \"phy-sriov1\"},{\"devname\": \"ens6f1\", \"physical_network\": \"phy-sriov2\"}]'" #NovaPCIPassthrough
+#    neutron::plugins::ml2::supported_pci_vendor_devs: ['8086:1515'] #NeutronSupportedPCIVendorDevs 
+#    neutron::agents::ml2::sriov::physical_device_mappings: "phy-sriov1:ens6f0,phy-sriov2:ens6f1" #NeutronPhysicalDevMappings
+#    tripleo::host::sriov::number_of_vfs: ["ens6f0:5","ens6f1:5"]  #NeutronSriovNumVFs
+#    neutron::agents::ml2::ovs::bridge_mappings: ["datacentre:br-isolated","phy-sriov1:br-isolated1","phy-sriov2:br-isolated2"] # NeutronBridgeMappings
+#    neutron::plugins::ml2::network_vlan_ranges: ["datacentre:4000:4070","phy-sriov1:4071:4071","phy-sriov2:4071:4071"] # NeutronNetworkVLANRanges
+#    neutron::agents::ml2::ovs::datapath_type: ["system"]
+#    nova::compute::vcpu_pin_set: ['4-11','24-35','16-23','36-47'] # NovaVcpuPinSet
+#    neutron::agents::ml2::ovs::tunnel_types: '' # NeutronTunnelTypes
+#    neutron::plugins::ml2::tenant_network_types: 'vlan' # NeutronNetworkType
+  
+
+
+  # Variables that cannot be passed through Hiera Data
+#   HostCpusList: '4-8'
   BondInterfaceOvsOptions: "bond_mode=balance-slb lacp=active"

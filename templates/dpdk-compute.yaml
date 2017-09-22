@@ -171,24 +171,12 @@ resources:
               use_dhcp: false
               members:
                 -
-                  type: ovs_dpdk_bond
-                  name: dpdkbond0
-                  ovs_options: {get_param: DpdkBondInterfaceOvsOptions}
+                  type: ovs_dpdk_port
+                  name: dpdk0
                   members:
-                    -
-                      type: ovs_dpdk_port
-                      name: dpdk0
-                      members:
-                        - 
-                          type: interface
-                          name: ens6f0
-                    -
-                      type: ovs_dpdk_port
-                      name: dpdk1
-                      members:
-                        - 
-                          type: interface
-                          name: ens6f1
+                    - 
+                      type: interface
+                      name: ens6f0
 
 
 outputs:
