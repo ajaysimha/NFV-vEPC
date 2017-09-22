@@ -109,7 +109,6 @@ resources:
                   default: true
                   next_hop: {get_param: ControlPlaneDefaultRoute}
 
-
             - 
               type: interface
               name: ens255f0
