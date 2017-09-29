@@ -78,9 +78,9 @@ get_image http://cloud.centos.org/centos/7/images/CentOS-7-x86_64-GenericCloud.q
 
 #----Network for SRIOV node----
 
-openstack network create default
-openstack subnet create default --network default --gateway 172.20.1.1 --subnet-range 172.20.0.0/16
-openstack router add subnet router0 default
+#openstack network create default
+#openstack subnet create default --network default --gateway 172.20.1.1 --subnet-range 172.20.0.0/16
+#openstack router add subnet router0 default
 
 neutron net-create --provider:network_type vlan --provider:physical_network tenant --provider:segmentation_id 4072 sriov1
 net_id=$(neutron net-list | grep sriov1 | awk '{print $2}')
