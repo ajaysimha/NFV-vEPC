@@ -183,15 +183,6 @@ resources:
 
 
 
-#            -
-#              type: ovs_bridge
-#              name: br-link
-#              use_dhcp: false
-#              members:
-#                -
-#                  type: interface
-#                  name: ens6f1
-#
             -
               type: ovs_bridge
               name: br-link
@@ -200,14 +191,17 @@ resources:
                 -
                   type: linux_bond
                   name: bond2
+                  mtu: 9000
                   bonding_options: {get_param: LinuxBondInterfaceOptions}
                   members:
                     -
                       type: interface
                       name: ens6f0
+                      mtu: 9000
                     -
                       type: interface
                       name: ens6f1
+                      mtu: 9000
 
 outputs:
   OS::stack_id:

@@ -48,6 +48,9 @@ parameter_defaults:
   NtpServer: 10.5.26.10
 # Customize the IP ranges on each network to use for static IPs and VIPs
 
+  # Global MTU configuration on Neutron
+  NeutronGlobalPhysnetMtu: 9000
+
 
   # Gateway router for the external network
   ExternalInterfaceDefaultRoute: 10.19.108.254

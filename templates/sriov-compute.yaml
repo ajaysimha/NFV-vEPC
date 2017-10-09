@@ -109,6 +109,7 @@ resources:
                   default: true
                   next_hop: {get_param: ControlPlaneDefaultRoute}
 
+
             - 
               type: interface
               name: ens255f0
@@ -124,6 +125,7 @@ resources:
             -
               type: interface
               name: ens6f1
+              mtu: 9000
               use_dhcp: false
               defroute: false
 
